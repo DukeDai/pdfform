@@ -25,7 +25,7 @@ public class MainRunner {
     public static void main(String[] args) throws Exception {
         renderAdvance();
 
-        //renderTemplate(pdfDocument, acroForm);
+        renderSimple();
     }
 
     private static void renderAdvance() throws IOException {
@@ -39,6 +39,8 @@ public class MainRunner {
         renderTextField(acroForm, "fromYear", "2011-04-10");
         renderTextField(acroForm, "EmployerName", "USA");
         renderImageField(pdfDocument, acroForm, "imageButton", "signature.jpeg");
+        //acroForm.setNeedAppearances(false);
+        acroForm.flatten();
         pdfDocument.save("employee_fill.pdf");
         pdfDocument.close();
     }
@@ -55,8 +57,7 @@ public class MainRunner {
             renderTextField(acroForm, "field3", "new field value 3");
 
             renderImageField(pdfDocument, acroForm, "field4", "signature.jpeg");
-
-
+            acroForm.flatten();
             pdfDocument.save("form_fill.pdf");
             pdfDocument.close();
         }
