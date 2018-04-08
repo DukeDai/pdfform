@@ -14,5 +14,4 @@ dependencies {
     compile 'org.apache.pdfbox:pdfbox:2.0.9'
 }
 
-apply plugin: 'java'
 // apply from: java8Gradle
