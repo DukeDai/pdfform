@@ -1,7 +1,14 @@
 package com.dukedai;
 
+import com.google.common.base.Throwables;
 import net.lingala.zip4j.model.ZipParameters;
 import net.lingala.zip4j.util.Zip4jConstants;
+import org.apache.batik.transcoder.TranscoderException;
+import org.apache.batik.transcoder.TranscoderInput;
+import org.apache.batik.transcoder.TranscoderOutput;
+import org.apache.batik.transcoder.image.ImageTranscoder;
+import org.apache.batik.transcoder.image.JPEGTranscoder;
+import org.apache.batik.transcoder.image.PNGTranscoder;
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -12,11 +19,13 @@ import org.apache.pdfbox.pdmodel.*;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.*;
 import org.apache.pdfbox.pdmodel.font.encoding.Encoding;
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceDictionary;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm;
+import org.apache.pdfbox.pdmodel.interactive.form.PDCheckBox;
 import org.apache.pdfbox.pdmodel.interactive.form.PDField;
 import org.apache.pdfbox.pdmodel.interactive.form.PDTextField;
 import org.apache.pdfbox.rendering.PDFRenderer;
@@ -24,10 +33,7 @@ import org.apache.pdfbox.rendering.PDFRenderer;
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
+import java.io.*;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.util.List;
@@ -40,8 +46,8 @@ public class MainRunner {
         // testFormsWithJDKZip();
         // parsePdf();
         //drawPDF();
-        renderSingleFile();
-        //renderCKJFontToImage();
+        // renderSingleFile();
+        renderCKJFontToImage();
     }
 
     private static void renderCKJFontToImage() throws Exception{
@@ -52,13 +58,13 @@ public class MainRunner {
 
 
         for (PDField field : acroForm.getFields()) {
-            //System.out.println(field.getFullyQualifiedName());
+            System.out.println(field.getFullyQualifiedName());
         }
         acroForm.setNeedAppearances(false);
 
-        byte[] imageBytes = convertTextToImage("인천 4센터");
+        byte[] imageBytes = convertTextToImageWithFont("인천 4센터");
         renderImageField(pdfDocument, acroForm, "center", imageBytes);
-        //renderTextFieldWithFont(acroForm, "center", "인천 4센터");
+        // renderTextFieldWithFont(acroForm, "center", "인천 4센터");
         renderAsciiTextField(acroForm, "shiftStart", "09:00");
         renderAsciiTextField(acroForm, "shiftEnd", "18:00");
         renderAsciiTextField(acroForm, "breakStart", "12:00");
@@ -71,6 +77,8 @@ public class MainRunner {
         renderAsciiTextField(acroForm, "endYear", "2018");
         renderAsciiTextField(acroForm, "endMonth", "05");
         renderAsciiTextField(acroForm, "endDay", "06");
+        renderCheckField(acroForm, "check1", true);
+        renderCheckField(acroForm, "check2", false);
         renderAsciiTextField(acroForm, "birthday", "2010-05-06");
         renderImageField(pdfDocument, acroForm, "signature", "signature.jpeg");
         acroForm.flatten();
@@ -80,6 +88,28 @@ public class MainRunner {
 
         pdfDocument.save(baos);
         baos.flush();
+
+        int pages = pdfDocument.getNumberOfPages();
+
+        PDFRenderer renderer = new PDFRenderer(pdfDocument);
+        BufferedImage[] bufImages = new BufferedImage[pages];
+        int totalHeight = 0;
+        for (int p = 0; p < pages; p++) {
+            BufferedImage image = renderer.renderImage(p, 1);
+            bufImages[p] = image;
+            totalHeight += image.getHeight();
+        }
+        pdfDocument.close();
+
+        BufferedImage concatImage = new BufferedImage(bufImages[0].getWidth(), totalHeight, BufferedImage.TYPE_INT_RGB);
+        Graphics g = concatImage.getGraphics();
+        int nextHeight = 0;
+        for (BufferedImage bi : bufImages) {
+            g.drawImage(bi, 0, nextHeight, null);
+            nextHeight += bi.getHeight();
+        }
+
+        ImageIO.write(concatImage, "jpg", new File("concatenated.jpg"));
         pdfDocument.close();
     }
 
@@ -99,7 +129,7 @@ public class MainRunner {
         acroForm.refreshAppearances();
 
         for (PDField field : acroForm.getFields()) {
-            //System.out.println(field.getFullyQualifiedName());
+            System.out.println(field.getFullyQualifiedName());
         }
         acroForm.setNeedAppearances(false);
 
@@ -120,7 +150,7 @@ public class MainRunner {
         renderAsciiTextField(acroForm, "endDay", "06");
         renderAsciiTextField(acroForm, "birthday", "2010-05-06");
         renderImageField(pdfDocument, acroForm, "signature", "signature.jpeg");
-        acroForm.flatten();
+        //acroForm.flatten();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
         pdfDocument.save("contract.pdf");
@@ -377,7 +407,7 @@ public class MainRunner {
     }
 
     static byte[] readFormBytes() throws Exception {
-        File f = new File("contract_form.pdf");
+        File f = new File("staff_contract_form.pdf");
         FileInputStream fis = new FileInputStream(f);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         byte[] buffer = new byte[4096];
@@ -404,6 +434,15 @@ public class MainRunner {
         PDField field = (PDField) acroForm.getField(name);
 
         field.setValue(value);
+    }
+
+    private static void renderCheckField(PDAcroForm acroForm, String name, boolean value) throws IOException{
+        PDCheckBox checkBox = (PDCheckBox)acroForm.getField(name);
+        if(value) {
+            checkBox.check();
+        }else{
+            checkBox.unCheck();
+        }
     }
 
     private static void renderImageField(PDDocument pdfDocument, PDAcroForm acroForm, String name, byte[] imageBytes) throws IOException {
@@ -475,7 +514,21 @@ public class MainRunner {
                      * BufferedImage bufferedImage = ImageIO.read(imageFile);
                      * PDImageXObject pdImageXObject = LosslessFactory.createFromImage(document, bufferedImage);
                      */
+//                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+//                    try {
+//                        JPEGTranscoder transcoder = new JPEGTranscoder();
+//                        transcoder.addTranscodingHint(JPEGTranscoder.KEY_QUALITY, new Float(0.8));
+//                        TranscoderInput input = new TranscoderInput(new FileInputStream(imageFile));
+//                        TranscoderOutput output = new TranscoderOutput(baos);
+//                        transcoder.transcode(input, output);
+//                    } catch (TranscoderException e) {
+//                        throw Throwables.propagate(e);
+//                    }
+//                    baos.close();
+
+
                     PDImageXObject pdImageXObject = PDImageXObject.createFromFile(filePath, pdfDocument);
+                    //PDImageXObject pdImageXObject = PDImageXObject.createFromByteArray(pdfDocument, baos.toByteArray(), null);
                     float imageScaleRatio = (float) pdImageXObject.getHeight() / (float) pdImageXObject.getWidth();
 
                     PDRectangle buttonPosition = getFieldArea(pdPushButton);
@@ -513,6 +566,64 @@ public class MainRunner {
         return new PDRectangle(fieldAreaArray);
     }
 
+    private static byte[] convertTextToImageWithFont(String text){
+
+        try {
+            GraphicsEnvironment ge =
+                    GraphicsEnvironment.getLocalGraphicsEnvironment();
+            FileInputStream fis = new FileInputStream("UnBatang.ttf");
+            ge.registerFont(Font.createFont(Font.TRUETYPE_FONT, fis));
+            ge.registerFont(Font.createFont(Font.TRUETYPE_FONT, fis));
+            ge.registerFont(Font.createFont(Font.TRUETYPE_FONT, fis));
+            ge.registerFont(Font.createFont(Font.TRUETYPE_FONT, fis));
+            Font[] allFont = ge.getAllFonts();
+            for(Font f : allFont){
+                System.out.println(f.getFamily());
+            }
+        } catch (IOException|FontFormatException e) {
+            //Handle exception
+        }
+
+        BufferedImage img = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2d = img.createGraphics();
+        // family name "UnBatang", face name "Un Batang"
+        Font font = new Font("UnBatang", Font.PLAIN, 20);
+        g2d.setFont(font);
+        FontMetrics fm = g2d.getFontMetrics();
+        int width = fm.stringWidth(text);
+        int height = fm.getHeight();
+        g2d.dispose();
+
+        img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        g2d = img.createGraphics();
+        g2d.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_QUALITY);
+        g2d.setRenderingHint(RenderingHints.KEY_DITHERING, RenderingHints.VALUE_DITHER_ENABLE);
+        g2d.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        g2d.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_NORMALIZE);
+        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g2d.setFont(font);
+        fm = g2d.getFontMetrics();
+        g2d.setColor(Color.BLACK);
+        g2d.drawString(text, 0, fm.getAscent());
+        g2d.dispose();
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            // jpeg has black background, but png not.
+            ImageIO.write(img, "png", baos);
+            ImageIO.write(img, "png", new File("Text.png"));
+            return baos.toByteArray();
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+
+        return null;
+
+    }
+
     private static byte[] convertTextToImage(String text) {
         /*
            Because font metrics is based on a graphics context, we need to create
@@ -521,7 +632,7 @@ public class MainRunner {
          */
         BufferedImage img = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2d = img.createGraphics();
-        Font font = new Font("Arial", Font.PLAIN, 20);
+        Font font = new Font("Lucida", Font.PLAIN, 16);
         g2d.setFont(font);
         FontMetrics fm = g2d.getFontMetrics();
         int width = fm.stringWidth(text);
@@ -545,8 +656,9 @@ public class MainRunner {
         g2d.dispose();
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            // jpeg has black background, but png not.
             ImageIO.write(img, "png", baos);
-            // ImageIO.write(img, "png", new File("Text.png"));
+            ImageIO.write(img, "png", new File("Text.png"));
             return baos.toByteArray();
         } catch (IOException ex) {
             ex.printStackTrace();
