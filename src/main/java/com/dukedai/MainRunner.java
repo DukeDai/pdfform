@@ -1,6 +1,5 @@
 package com.dukedai;
 
-import com.google.common.base.Throwables;
 import net.lingala.zip4j.model.ZipParameters;
 import net.lingala.zip4j.util.Zip4jConstants;
 import org.apache.batik.transcoder.TranscoderException;
@@ -28,6 +27,7 @@ import org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm;
 import org.apache.pdfbox.pdmodel.interactive.form.PDCheckBox;
 import org.apache.pdfbox.pdmodel.interactive.form.PDField;
 import org.apache.pdfbox.pdmodel.interactive.form.PDTextField;
+import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 
 import javax.imageio.ImageIO;
@@ -63,6 +63,7 @@ public class MainRunner {
         acroForm.setNeedAppearances(false);
 
         byte[] imageBytes = convertTextToImageWithFont("인천 4센터");
+        byte[] nameBytes = convertTextToImageWithFont("인센터터");
         renderImageField(pdfDocument, acroForm, "center", imageBytes);
         // renderTextFieldWithFont(acroForm, "center", "인천 4센터");
         renderAsciiTextField(acroForm, "shiftStart", "09:00");
@@ -71,16 +72,21 @@ public class MainRunner {
         renderAsciiTextField(acroForm, "breakEnd", "13:00");
         renderAsciiTextField(acroForm, "hourSalary", "79,065");
         renderAsciiTextField(acroForm, "daySalary", "79,065");
+        renderAsciiTextField(acroForm, "baseSalary", "79,065");
+        renderAsciiTextField(acroForm, "totalSalary", "79,065");
+        renderAsciiTextField(acroForm, "nightAllowance", "79,065");
+        renderAsciiTextField(acroForm, "specialAllowance", "79,065");
         renderAsciiTextField(acroForm, "startYear", "2018");
         renderAsciiTextField(acroForm, "startMonth", "05");
         renderAsciiTextField(acroForm, "startDay", "05");
         renderAsciiTextField(acroForm, "endYear", "2018");
         renderAsciiTextField(acroForm, "endMonth", "05");
         renderAsciiTextField(acroForm, "endDay", "06");
-        renderCheckField(acroForm, "check1", true);
-        renderCheckField(acroForm, "check2", false);
+        renderImageField(pdfDocument, acroForm, "name", nameBytes);
+        //renderCheckField(acroForm, "check1", true);
+        //renderCheckField(acroForm, "check2", false);
         renderAsciiTextField(acroForm, "birthday", "2010-05-06");
-        renderImageField(pdfDocument, acroForm, "signature", "signature.jpeg");
+        renderImageField(pdfDocument, acroForm, "signature", "signature.svg");
         acroForm.flatten();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
@@ -95,7 +101,7 @@ public class MainRunner {
         BufferedImage[] bufImages = new BufferedImage[pages];
         int totalHeight = 0;
         for (int p = 0; p < pages; p++) {
-            BufferedImage image = renderer.renderImage(p, 1);
+            BufferedImage image = renderer.renderImage(p, 2);
             bufImages[p] = image;
             totalHeight += image.getHeight();
         }
@@ -111,6 +117,18 @@ public class MainRunner {
 
         ImageIO.write(concatImage, "jpg", new File("concatenated.jpg"));
         pdfDocument.close();
+    }
+
+    private static ByteArrayOutputStream convertSVG2Jpeg(byte[] jpgBytes) throws Exception{
+        JPEGTranscoder transcoder = new JPEGTranscoder();
+        transcoder.addTranscodingHint(JPEGTranscoder.KEY_QUALITY, 0.8f);
+        TranscoderInput input = new TranscoderInput(new ByteArrayInputStream(jpgBytes));
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        TranscoderOutput output = new TranscoderOutput(baos);
+        transcoder.transcode(input, output);
+        baos.flush();
+        baos.close();
+        return baos;
     }
 
     private static void renderSingleFile() throws Exception {
@@ -142,6 +160,9 @@ public class MainRunner {
         renderAsciiTextField(acroForm, "breakEnd", "13:00");
         renderAsciiTextField(acroForm, "hourSalary", "79,065");
         renderAsciiTextField(acroForm, "daySalary", "79,065");
+        renderAsciiTextField(acroForm, "nightAllowance", "79,065");
+        renderAsciiTextField(acroForm, "totalSalary", "79,065");
+        renderAsciiTextField(acroForm, "specialAllowance", "79,065");
         renderAsciiTextField(acroForm, "startYear", "2018");
         renderAsciiTextField(acroForm, "startMonth", "05");
         renderAsciiTextField(acroForm, "startDay", "05");
@@ -407,7 +428,7 @@ public class MainRunner {
     }
 
     static byte[] readFormBytes() throws Exception {
-        File f = new File("staff_contract_form.pdf");
+        File f = new File("Forklift1_form.pdf");
         FileInputStream fis = new FileInputStream(f);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         byte[] buffer = new byte[4096];
@@ -432,7 +453,10 @@ public class MainRunner {
 
     private static void renderAsciiTextField(PDAcroForm acroForm, String name, String value) throws IOException {
         PDField field = (PDField) acroForm.getField(name);
-
+        if(field == null){
+            System.out.println("name: " + name + " value: " + value);
+            return;
+        }
         field.setValue(value);
     }
 
@@ -494,7 +518,7 @@ public class MainRunner {
         }
     }
 
-    private static void renderImageField(PDDocument pdfDocument, PDAcroForm acroForm, String name, String value) throws IOException {
+    private static void renderImageField(PDDocument pdfDocument, PDAcroForm acroForm, String name, String value) throws Exception {
         PDField buttonField = acroForm.getField(name);
         // System.out.println(buttonField.getClass().getSimpleName());
         // if (buttonField instanceof PDPushButton) {
@@ -514,21 +538,21 @@ public class MainRunner {
                      * BufferedImage bufferedImage = ImageIO.read(imageFile);
                      * PDImageXObject pdImageXObject = LosslessFactory.createFromImage(document, bufferedImage);
                      */
-//                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-//                    try {
-//                        JPEGTranscoder transcoder = new JPEGTranscoder();
-//                        transcoder.addTranscodingHint(JPEGTranscoder.KEY_QUALITY, new Float(0.8));
-//                        TranscoderInput input = new TranscoderInput(new FileInputStream(imageFile));
-//                        TranscoderOutput output = new TranscoderOutput(baos);
-//                        transcoder.transcode(input, output);
-//                    } catch (TranscoderException e) {
-//                        throw Throwables.propagate(e);
-//                    }
-//                    baos.close();
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    try {
+                        JPEGTranscoder transcoder = new JPEGTranscoder();
+                        transcoder.addTranscodingHint(JPEGTranscoder.KEY_QUALITY, new Float(0.8));
+                        TranscoderInput input = new TranscoderInput(new FileInputStream(imageFile));
+                        TranscoderOutput output = new TranscoderOutput(baos);
+                        transcoder.transcode(input, output);
+                    } catch (TranscoderException e) {
+                        throw e;
+                    }
+                    baos.close();
 
 
-                    PDImageXObject pdImageXObject = PDImageXObject.createFromFile(filePath, pdfDocument);
-                    //PDImageXObject pdImageXObject = PDImageXObject.createFromByteArray(pdfDocument, baos.toByteArray(), null);
+                    //PDImageXObject pdImageXObject = PDImageXObject.createFromFile(filePath, pdfDocument);
+                    PDImageXObject pdImageXObject = PDImageXObject.createFromByteArray(pdfDocument, baos.toByteArray(), null);
                     float imageScaleRatio = (float) pdImageXObject.getHeight() / (float) pdImageXObject.getWidth();
 
                     PDRectangle buttonPosition = getFieldArea(pdPushButton);
@@ -573,15 +597,12 @@ public class MainRunner {
                     GraphicsEnvironment.getLocalGraphicsEnvironment();
             FileInputStream fis = new FileInputStream("UnBatang.ttf");
             ge.registerFont(Font.createFont(Font.TRUETYPE_FONT, fis));
-            ge.registerFont(Font.createFont(Font.TRUETYPE_FONT, fis));
-            ge.registerFont(Font.createFont(Font.TRUETYPE_FONT, fis));
-            ge.registerFont(Font.createFont(Font.TRUETYPE_FONT, fis));
             Font[] allFont = ge.getAllFonts();
             for(Font f : allFont){
                 System.out.println(f.getFamily());
             }
         } catch (IOException|FontFormatException e) {
-            //Handle exception
+            e.printStackTrace();
         }
 
         BufferedImage img = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
@@ -593,6 +614,10 @@ public class MainRunner {
         int width = fm.stringWidth(text);
         int height = fm.getHeight();
         g2d.dispose();
+
+        if(text.length() > 4){
+            height += 20;
+        }
 
         img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         g2d = img.createGraphics();
@@ -608,7 +633,7 @@ public class MainRunner {
         g2d.setFont(font);
         fm = g2d.getFontMetrics();
         g2d.setColor(Color.BLACK);
-        g2d.drawString(text, 0, fm.getAscent());
+        g2d.drawString(text, 0, fm.getAscent()+10);
         g2d.dispose();
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -632,7 +657,7 @@ public class MainRunner {
          */
         BufferedImage img = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2d = img.createGraphics();
-        Font font = new Font("Lucida", Font.PLAIN, 16);
+        Font font = new Font("Lucida", Font.PLAIN, 20);
         g2d.setFont(font);
         FontMetrics fm = g2d.getFontMetrics();
         int width = fm.stringWidth(text);
